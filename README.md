@@ -4,3 +4,5 @@
 - airflow db upgrade
 - airflow webserver -p 8080
 - airflow scheduler
+
+example with pandas
