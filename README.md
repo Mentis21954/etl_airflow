@@ -1,5 +1,5 @@
 # etl_airflow
 
-- airflow initdb
+- airflow db init
 - airflow db upgrade
 - airflow webserver -p 8080
