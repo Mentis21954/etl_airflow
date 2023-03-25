@@ -1,15 +1,39 @@
-from datetime import datetime
-from airflow import DAG
-from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.python_operator import PythonOperator
+import json
+import pendulum
+from airflow.decorators import dag, task
 
-def print_hello():
-    return 'Hello world from first Airflow DAG!'
 
-dag = DAG('hello_world2', description='Hello World DAG',
-          schedule_interval='0 12 * * *',
-          start_date=datetime(2017, 3, 20), catchup=False)
+# [START instantiate_dag]
+@dag(
+    schedule_interval=None,
+    start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
+    catchup=False,
+    tags=['akis'],
+)
+def etl():
+    @task()
+    def extract():
+        data_string = '{"1001": 301.27, "1002": 433.21, "1003": 502.22}'
 
-hello_operator = PythonOperator(task_id='hello_task', python_callable=print_hello, dag=dag)
+        order_data_dict = json.loads(data_string)
+        return order_data_dict
 
-print(hello_operator)
+    @task(multiple_outputs=True)
+    def transform(order_data_dict: dict):
+        total_order_value = 0
+
+        for value in order_data_dict.values():
+            total_order_value += value
+
+        return {"total_order_value": total_order_value}
+
+    @task()
+    def load(total_order_value: float):
+        print(f"Total order value is: {total_order_value:.2f}")
+
+    order_data = extract()
+    order_summary = transform(order_data)
+    load(order_summary["total_order_value"])
+
+
+tutorial_etl_dag = etl()
