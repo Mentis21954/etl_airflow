@@ -85,5 +85,5 @@ def create_dag(name, index):
     return dag
 
 
-for index, name in enumerate(dag_names[:2]):
+for index, name in enumerate(dag_names[:3]):
     globals()["dag_{}".format(str(name))] = create_dag(name, index)

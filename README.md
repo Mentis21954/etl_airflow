@@ -5,4 +5,6 @@
 - airflow webserver -p 8080 (http://localhost:8080)
 - airflow scheduler
 
+# run DAG
+- airflow dags trigger ETL_for_Drake
 example with pandas
