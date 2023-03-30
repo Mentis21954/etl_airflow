@@ -12,7 +12,7 @@ LASTFM_API_KEY = '3f8f9f826bc4b0c8b529828839d38e4b'
 DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
 
 df = pd.read_csv(
-    '~/python/anaconda3/envs/condenv/lib/python3.6/site-packages/airflow/example_dags/etl_airflow/spotify_artist_data.csv')
+    '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
 names = list(df['Artist Name'].unique())
 # add '_' for dag id
 dag_names = df['Artist Name'].replace(' ', '_', regex=True)
