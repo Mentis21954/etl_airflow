@@ -39,20 +39,20 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     @task(multiple_outputs=True)
     def extract_info_from_artist(name: str):
         # extract for all artists' informations from last fm and store as a dict
-        artist_content = {}
+        artist_contents = {}
         url = ('https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=') + str(name) + (
-            '&api_key=') + str(LASTFM_API_KEY) + ('&format=json')
+                '&api_key=') + str(LASTFM_API_KEY) + ('&format=json')
         artist_info = requests.get(url).json()
-        artist_content.update({str(name): artist_info['artist']['bio']['content']})
+        artist_contents.update({str(name): artist_info['artist']['bio']['content']})
         print('Search information for artist {} ...'.format(str(name)))
 
         # create dataframe by artist names as index
-        contents_df = pd.DataFrame(artist_content.values(), columns=['Content'], index=artist_content.keys())
+        contents_df = pd.DataFrame(artist_contents.values(), columns=['Content'], index=artist_contents.keys())
         # return artist info as a dict object for transform stage
         return contents_df.to_dict(orient='index')
 
 
-    @task(multiple_outputs=True)
+    @task()
     def extract_titles_from_artist(name: str):
         # get the artist id from artist name
         url = 'https://api.discogs.com/database/search?q=' + str(name) + (
@@ -96,12 +96,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
 
         [extract_info_from_artist(name), extract_titles_from_artist(name)] >> start()
         
-    """""
-    for name in list(names.key()):
-        # if index < len(names):
-        extract_info_from_artist(name)
-        extract_titles_from_artist(name)
-    """""
+        
+    
 
 """""
 extract_info_from_artist = PythonOperator(
