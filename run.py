@@ -16,8 +16,10 @@ df = pd.read_csv(
     '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
 names = list(df['Artist Name'].unique())
 # add '_' for dag id
+"""""
 dag_names = df['Artist Name'].replace(' ', '_', regex=True)
 dag_names = list(dag_names)
+"""""
 
 
 with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
@@ -34,7 +36,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         df = pd.read_csv(
             '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
         names = list(df['Artist Name'].unique())
-        return json.dumps({name: None for name in names[:2]})
+        return {name: None for name in names[:2]}
+        #return names[:3]
 
     @task(multiple_outputs=True)
     def extract_info_from_artist(name: str):
@@ -52,7 +55,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         return contents_df.to_dict(orient='index')
 
 
-    @task()
+    @task(multiple_outputs=True)
     def extract_titles_from_artist(name: str):
         # get the artist id from artist name
         url = 'https://api.discogs.com/database/search?q=' + str(name) + (
@@ -88,15 +91,19 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
             time.sleep(5)
 
         print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
-        return json.dumps({'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
-                           'Format': format_info, 'Discogs Price': price_info})
+        return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
+                           'Format': format_info, 'Discogs Price': price_info}
     
-    #names = extract_artist_names()
-    for name in names[:2]:
+    @task_group
+    def extract(names: list):
+        for name in names:           
+            [extract_info_from_artist(name), extract_titles_from_artist(name)]
 
-        [extract_info_from_artist(name), extract_titles_from_artist(name)] >> start()
-        
-        
+    #for index, name in enumerate(names[:2]):
+    start() >> extract(names[:3])
+       
+    
+       
     
 
 """""
