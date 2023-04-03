@@ -34,8 +34,9 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         df = pd.read_csv(
             '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
         names = list(df['Artist Name'].unique())
-        return {name: None for name in names[:2]}
-        #return names[:3]
+        return {'Artist': names[:2]}
+        #return names[:1]
+        
 
     @task(multiple_outputs=True)
     def extract_info_from_artist(name: str):
@@ -85,17 +86,17 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                     format_info.append(None)
                 print('Found ' + str((index + 1)) + ' titles!')
 
-            # sleep 3 secs to don't miss requests
-            time.sleep(5)
+            # sleep 5 secs to don't miss requests
+            #time.sleep(3)
 
         print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
         return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
                            'Format': format_info, 'Discogs Price': price_info}
     
     @task_group
-    def extract(name: str):
-        #for name in names:           
-        [extract_info_from_artist(name)]#, extract_titles_from_artist(name)]
+    def extract(names: list):
+        for name in names:           
+            [extract_info_from_artist(name), extract_titles_from_artist(name)]
 
     @task
     def clean_the_artist_content(content: dict):
@@ -115,43 +116,26 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         df = df[df['Discogs Price'].notna()]
         print('Remove tracks where there no selling price in discogs.com')
 
-        return df.to_dict(orient='columns', compression='infer')
+        return df.to_dict()
 
+    @task
+    def drop_duplicates_titles(releases: dict):
+        df = pd.DataFrame.from_dict(releases)
+        df = df.drop_duplicates(subset=['Title'])
+        print('find and remove the duplicates titles if exist!')
+        df = pd.DataFrame(data={'Collaborations': df['Collaborations'].values, 'Year': df['Year'].values,
+                                'Format': df['Format'].values,
+                                'Discogs Price': df['Discogs Price'].values}, index=(df['Title'].values))
+        print(df.head())
 
-    @task_group
+        return df.to_dict(orient='index')
+        
+    @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
+        #list_names = names.values
         for name in names:
-            [clean_the_artist_content(extract_info_from_artist(name)), remove_null_prices(extract_titles_from_artist(name))]
+            [clean_the_artist_content(extract_info_from_artist(name)), 
+            drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name)))]
     
+
     start() >> transform(names[:2])
-       
-    
-       
-    
-
-"""""
-extract_info_from_artist = PythonOperator(
-    task_id='extract_info_from_Drake',
-    python_callable=extract_info_from_artist,
-    op_args= str(names[0]),
-    dag=dag
-)
-
-extract_titles_from_artist1 = PythonOperator(
-    task_id='extract_titles_from_{}'.format(str(dag_names[0])),
-    python_callable=extract_titles_from_artist,
-    op_args=[names[0]],
-    dag=dag
-)
-
-extract_titles_from_artist2 = PythonOperator(
-    task_id='extract_titles_from_{}'.format(str(dag_names[1])),
-    python_callable=extract_titles_from_artist,
-    op_args=[names[1]],
-    dag=dag
-)
-"""""
-"""""
-names, names_copy = extract_artist_names()
-task_start >> [extract_titles_from_artist1, extract_titles_from_artist2]
-"""""
