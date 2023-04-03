@@ -5,8 +5,6 @@ import requests
 import pendulum
 from airflow import DAG
 from airflow.decorators import task, task_group
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
 
 LASTFM_API_KEY = '3f8f9f826bc4b0c8b529828839d38e4b'
 DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
@@ -25,7 +23,7 @@ dag_names = list(dag_names)
 with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
          schedule_interval=None,
          description="ETL project with airflow tool",
-         catchup=False, tags=['artist', 'lastfm', 'discogs']) as dag:
+         catchup=False, tags=['artists', 'lastfm', 'discogs']) as dag:
 
     @task
     def start():
@@ -95,12 +93,37 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                            'Format': format_info, 'Discogs Price': price_info}
     
     @task_group
-    def extract(names: list):
-        for name in names:           
-            [extract_info_from_artist(name), extract_titles_from_artist(name)]
+    def extract(name: str):
+        #for name in names:           
+        [extract_info_from_artist(name)]#, extract_titles_from_artist(name)]
 
-    #for index, name in enumerate(names[:2]):
-    start() >> extract(names[:3])
+    @task
+    def clean_the_artist_content(content: dict):
+        content_df = pd.DataFrame.from_dict(content, orient='index')
+        # remove new line command and html tags
+        content_df['Content'] = content_df['Content'].replace('\n', '', regex=True)
+        content_df['Content'] = content_df['Content'].replace(r'<[^<>]*>', '', regex=True)
+        print('Clean the informations texts')
+
+        return content_df.to_dict(orient='index')
+    
+    @task
+    def remove_null_prices(releases: dict):
+        df = pd.DataFrame.from_dict(releases)
+        print(df.head())
+        # find and remove the rows/titles where there are no selling prices in discogs.com
+        df = df[df['Discogs Price'].notna()]
+        print('Remove tracks where there no selling price in discogs.com')
+
+        return df.to_dict(orient='columns', compression='infer')
+
+
+    @task_group
+    def transform(names: list):
+        for name in names:
+            [clean_the_artist_content(extract_info_from_artist(name)), remove_null_prices(extract_titles_from_artist(name))]
+    
+    start() >> transform(names[:2])
        
     
        
