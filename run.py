@@ -130,12 +130,19 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
 
         return df.to_dict(orient='index')
         
+    @task
+    def integrate_data(content: dict, releases: dict):
+        content.update({'Releases': releases})
+        return content 
+    
     @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
         #list_names = names.values
         for name in names:
-            [clean_the_artist_content(extract_info_from_artist(name)), 
-            drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name)))]
+           # [clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name)))]
+            
+            integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name))))      
+            
     
 
-    start() >> transform(names[:2])
+    start() >> transform(names[:1])
