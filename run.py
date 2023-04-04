@@ -87,7 +87,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                 print('Found ' + str((index + 1)) + ' titles!')
 
             # sleep 5 secs to don't miss requests
-            #time.sleep(3)
+            #time.sleep(1)
 
         print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
         return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
@@ -131,18 +131,30 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         return df.to_dict(orient='index')
         
     @task
-    def integrate_data(content: dict, releases: dict):
-        content.update({'Releases': releases})
-        return content 
+    def integrate_data(content: dict, releases: dict) -> None:
+        key = list(content.keys())
+        artist = str(key[0])
+        content.update({artist: {'Description': content[artist]['Content'],'Releases': releases}})
+        #content.update({'Releases': releases})
+        
+        with open('/home/mentis/airflow/dags/etl_airflow/artists.json', 'a') as outfile:
+            outfile.write(json.dumps(content))
+        
     
     @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
-        #list_names = names.values
         for name in names:
-           # [clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name)))]
-            
             integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name))))      
             
-    
+    @task
+    def load_to_database():
+        with open('/home/mentis/airflow/dags/etl_airflow/artists.json', 'r') as artist_file:
+            data = json.load(artist_file)
+            for artist in list(data.keys()):
+                print(data[artist])
 
-    start() >> transform(names[:1])
+    @task_group
+    def load():
+        load_to_database()
+    
+    start() >> transform(names[:1]) >> load()
