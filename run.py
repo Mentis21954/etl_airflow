@@ -18,11 +18,11 @@ names = list(df['Artist Name'].unique())
 with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
          schedule_interval=None,
          description="ETL project with airflow tool",
-         catchup=False, tags=['artists', 'lastfm', 'discogs']) as dag:
+         catchup=False, tags=['artists', 'last.fm', 'discogs.com']) as dag:
 
     @task
     def start():
-        print('Start Pipeline...!')
+        print('Start Workflow...!')
 
     @task
     def extract_artist_names():
@@ -57,7 +57,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         discogs_artist_info = requests.get(url).json()
         id = discogs_artist_info['results'][0]['id']
 
-        print('Search releases from for discogs.com for artist ' + str(name) + '...')
+        print('Search releases from discogs.com for artist {} ...'.format(str(name)))
 
         # with id get artist's releases
         url = ('https://api.discogs.com/artists/') + str(id) + ('/releases')
@@ -70,7 +70,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
             source = requests.get(url).json()
             # search if exists track's price
             if 'lowest_price' in source.keys():
-                # print(str(index) + ': '+ str(source['title'])+ ' '+ str(source['lowest_price']))
+                
                 title_info.append(source['title'])
                 colab_info.append(releases_df['artist'].iloc[index])
                 year_info.append(source['year'])
@@ -82,16 +82,12 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                 print('Found ' + str((index + 1)) + ' titles!')
 
             # sleep 5 secs to don't miss requests
-            time.sleep(1)
+            time.sleep(5)
 
         print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
         return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
                            'Format': format_info, 'Discogs Price': price_info}
     
-    @task_group
-    def extract(names: list):
-        for name in names:           
-            [extract_info_from_artist(name), extract_titles_from_artist(name)]
 
     @task
     def clean_the_artist_content(content: dict):
@@ -99,7 +95,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         # remove new line command and html tags
         content_df['Content'] = content_df['Content'].replace('\n', '', regex=True)
         content_df['Content'] = content_df['Content'].replace(r'<[^<>]*>', '', regex=True)
-        print('Clean the informations texts')
+        print('Clean the informations text')
 
         return content_df.to_dict(orient='index')
     
@@ -117,7 +113,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     def drop_duplicates_titles(releases: dict):
         df = pd.DataFrame.from_dict(releases)
         df = df.drop_duplicates(subset=['Title'])
-        print('find and remove the duplicates titles if exist!')
+        print('Find and remove the duplicates titles if exist!')
         df = pd.DataFrame(data={'Collaborations': df['Collaborations'].values, 'Year': df['Year'].values,
                                 'Format': df['Format'].values,
                                 'Discogs Price': df['Discogs Price'].values}, index=(df['Title'].values))
@@ -176,5 +172,4 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     def load():
         load_to_database()
     
-    start() >> transform(names[:2]) >> load()
-    #load()
+    start() >> transform(names[:3]) >> load()

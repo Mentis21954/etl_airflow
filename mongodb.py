@@ -8,4 +8,3 @@ cursor = artists.find({})
 print('\nList of artists')
 for document in cursor:
     print(document)
-    
