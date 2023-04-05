@@ -6,5 +6,6 @@
 - airflow scheduler
 
 # run DAG
-- airflow dags trigger ETL_for_Drake
+- airflow dags trigger ETL
+
 example with pandas
