@@ -5,6 +5,7 @@ import requests
 import pendulum
 from airflow import DAG
 from airflow.decorators import task, task_group
+import pymongo
 
 LASTFM_API_KEY = '3f8f9f826bc4b0c8b529828839d38e4b'
 DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
@@ -13,12 +14,6 @@ DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
 df = pd.read_csv(
     '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
 names = list(df['Artist Name'].unique())
-# add '_' for dag id
-"""""
-dag_names = df['Artist Name'].replace(' ', '_', regex=True)
-dag_names = list(dag_names)
-"""""
-
 
 with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
          schedule_interval=None,
@@ -87,7 +82,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                 print('Found ' + str((index + 1)) + ' titles!')
 
             # sleep 5 secs to don't miss requests
-            #time.sleep(1)
+            time.sleep(1)
 
         print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
         return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
@@ -135,26 +130,51 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         key = list(content.keys())
         artist = str(key[0])
         content.update({artist: {'Description': content[artist]['Content'],'Releases': releases}})
-        #content.update({'Releases': releases})
-        
-        with open('/home/mentis/airflow/dags/etl_airflow/artists.json', 'a') as outfile:
-            outfile.write(json.dumps(content))
+
+        # initialize file data to write
+        data = {}
+        try:
+            # check if file exist
+            file = open('/home/mentis/airflow/dags/etl_airflow/artists.json', "r")
+            # read the artists data that was already writen in file and store as a new data to write
+            data.update(json.load(file))
+            # add the new artist data
+            data.update(content)
+        except:
+            # If the file is not exist yet, just store the current data to write
+            data = content
+            
+        # write the new data 
+        file = open('/home/mentis/airflow/dags/etl_airflow/artists.json', "w")
+        json.dump(data, file)
+        return content
         
     
     @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
         for name in names:
             integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name))))      
-            
+          
     @task
     def load_to_database():
+        client = pymongo.MongoClient("mongodb+srv://user:AotD8lF0WspDIA4i@cluster0.qtikgbg.mongodb.net/?retryWrites=true&w=majority")
+        db = client["mydatabase"]
+        artists = db['artists']
+
         with open('/home/mentis/airflow/dags/etl_airflow/artists.json', 'r') as artist_file:
             data = json.load(artist_file)
+            
             for artist in list(data.keys()):
-                print(data[artist])
+                artists.insert_one({'Artist': str(artist), 
+                                    'Description': data[str(artist)]['Description'],
+                                    'Releases': data[str(artist)]['Releases']
+                                    })
+                print('Artist {} insert to DataBase!'.format(str(artist)))
 
-    @task_group
+
+    @task_group(group_id = 'load_stage')
     def load():
         load_to_database()
     
-    start() >> transform(names[:1]) >> load()
+    start() >> transform(names[:2]) >> load()
+    #load()
