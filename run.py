@@ -23,17 +23,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     @task
     def start():
         print('Start Workflow...!')
-
-    @task
-    def extract_artist_names():
-        df = pd.read_csv(
-            '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
-        names = list(df['Artist Name'].unique())
-        return {'Artist': names[:2]}
-        #return names[:1]
-        
-
-    @task(multiple_outputs=True)
+    
+    @task()
     def extract_info_from_artist(name: str):
         # extract for all artists' informations from last fm and store as a dict
         artist_contents = {}
@@ -48,8 +39,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         # return artist info as a dict object for transform stage
         return contents_df.to_dict(orient='index')
 
-
-    @task(multiple_outputs=True)
+    @task()
     def extract_titles_from_artist(name: str):
         # get the artist id from artist name
         url = 'https://api.discogs.com/database/search?q=' + str(name) + (
@@ -88,7 +78,6 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
                            'Format': format_info, 'Discogs Price': price_info}
     
-
     @task
     def clean_the_artist_content(content: dict):
         content_df = pd.DataFrame.from_dict(content, orient='index')
@@ -144,7 +133,6 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         file = open('/home/mentis/airflow/dags/etl_airflow/artists.json', "w")
         json.dump(data, file)
         return content
-        
     
     @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
@@ -166,7 +154,6 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                                     'Releases': data[str(artist)]['Releases']
                                     })
                 print('Artist {} insert to DataBase!'.format(str(artist)))
-
 
     @task_group(group_id = 'load_stage')
     def load():
