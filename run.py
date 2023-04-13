@@ -52,31 +52,32 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         # with id get artist's releases
         url = ('https://api.discogs.com/artists/') + str(id) + ('/releases')
         releases = requests.get(url).json()
-        releases_df = pd.json_normalize(releases['releases'])
-
-        # store the tracks info in a list
-        title_info, colab_info, year_info, format_info, price_info = [], [], [], [], []
-        for index, url in enumerate(releases_df['resource_url'].values):
+        
+        # store the releases/tracks info in a list of dictionaries
+        releases_info = []
+        for index in range(len(releases['releases'])):
+            url = releases['releases'][index]['resource_url']
             source = requests.get(url).json()
             # search if exists track's price
-            if 'lowest_price' in source.keys():
-                
-                title_info.append(source['title'])
-                colab_info.append(releases_df['artist'].iloc[index])
-                year_info.append(source['year'])
-                price_info.append(source['lowest_price'])
+            if 'lowest_price' in source.keys():  
                 if 'formats' in source.keys():
-                    format_info.append(source['formats'][0]['name'])
+                    releases_info.append({'Title': source['title'],
+                                      'Collaborations': releases['releases'][index]['artist'],
+                                      'Year': source['year'],
+                                      'Format': source['formats'][0]['name'],
+                                      'Discogs Price': source['lowest_price']})
                 else:
-                    format_info.append(None)
+                    releases_info.append({'Title': source['title'],
+                                      'Collaborations': releases['releases'][index]['artist'],
+                                      'Year': source['year'],
+                                      'Format': None,
+                                      'Discogs Price': source['lowest_price']})
                 print('Found ' + str((index + 1)) + ' titles!')
-
             # sleep 5 secs to don't miss requests
-            time.sleep(5)
+            time.sleep(3)
 
-        print('Find tracks from artist ' + str(name) + ' with Discogs ID: ' + str(id))
-        return {'Title': title_info, 'Collaborations': colab_info, 'Year': year_info,
-                           'Format': format_info, 'Discogs Price': price_info}
+        print('Found releases from artist ' + str(name) + ' with Discogs ID: ' + str(id))
+        return releases_info
     
     @task
     def clean_the_artist_content(content: dict):
@@ -94,7 +95,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         print(df.head())
         # find and remove the rows/titles where there are no selling prices in discogs.com
         df = df[df['Discogs Price'].notna()]
-        print('Remove tracks where there no selling price in discogs.com')
+        print('Remove releases where there no selling price in discogs.com')
 
         return df.to_dict()
 
@@ -159,4 +160,4 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     def load():
         load_to_database()
     
-    start() >> transform(names[:3]) >> load()
+    start() >> transform(names[:2]) >> load()
