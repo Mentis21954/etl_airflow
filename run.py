@@ -34,10 +34,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         artist_contents.update({str(name): artist_info['artist']['bio']['content']})
         print('Search information for artist {} ...'.format(str(name)))
 
-        # create dataframe by artist names as index
-        contents_df = pd.DataFrame(artist_contents.values(), columns=['Content'], index=artist_contents.keys())
-        # return artist info as a dict object for transform stage
-        return contents_df.to_dict(orient='index')
+        return artist_contents
 
     @task()
     def extract_titles_from_artist(name: str):
@@ -74,40 +71,45 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                                       'Discogs Price': source['lowest_price']})
                 print('Found ' + str((index + 1)) + ' titles!')
             # sleep 5 secs to don't miss requests
-            time.sleep(3)
+            time.sleep(5)
 
         print('Found releases from artist ' + str(name) + ' with Discogs ID: ' + str(id))
         return releases_info
     
     @task
     def clean_the_artist_content(content: dict):
-        content_df = pd.DataFrame.from_dict(content, orient='index')
-        # remove new line command and html tags
-        content_df['Content'] = content_df['Content'].replace('\n', '', regex=True)
+        content_df = pd.DataFrame(content.values(), columns=['Content'], index=content.keys())
+        
+        # remove new line commands, html tags and "", ''
+        content_df['Content'] = content_df['Content'].replace(r'\r+|\n+|\t+', '', regex=True)
         content_df['Content'] = content_df['Content'].replace(r'<[^<>]*>', '', regex=True)
+        content_df['Content'] = content_df['Content'].replace(r'"', '', regex=True)
+        content_df['Content'] = content_df['Content'].replace(r"'", '', regex=True)
         print('Clean the informations text')
 
         return content_df.to_dict(orient='index')
     
     @task
-    def remove_null_prices(releases: dict):
-        df = pd.DataFrame.from_dict(releases)
-        print(df.head())
+    def remove_wrong_values(releases: dict):
+        df = pd.DataFrame(releases)
+        
         # find and remove the rows/titles where there are no selling prices in discogs.com
         df = df[df['Discogs Price'].notna()]
+        print('Remove releases where there no selling price in discogs.com')
+        # keep only the rows has positive value of year
+        df = df[df['Year'] > 0]
         print('Remove releases where there no selling price in discogs.com')
 
         return df.to_dict()
 
     @task
     def drop_duplicates_titles(releases: dict):
-        df = pd.DataFrame.from_dict(releases)
+        df = pd.DataFrame(releases)
         df = df.drop_duplicates(subset=['Title'])
         print('Find and remove the duplicates titles if exist!')
         df = pd.DataFrame(data={'Collaborations': df['Collaborations'].values, 'Year': df['Year'].values,
                                 'Format': df['Format'].values,
                                 'Discogs Price': df['Discogs Price'].values}, index=(df['Title'].values))
-        print(df.head())
 
         return df.to_dict(orient='index')
         
@@ -138,7 +140,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     @task_group(group_id = 'extract_transform_stage')
     def transform(names: list):
         for name in names:
-            integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_null_prices(extract_titles_from_artist(name))))      
+            integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_wrong_values(extract_titles_from_artist(name))))      
           
     @task
     def load_to_database():
