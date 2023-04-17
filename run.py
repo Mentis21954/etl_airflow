@@ -10,21 +10,16 @@ import pymongo
 LASTFM_API_KEY = '3f8f9f826bc4b0c8b529828839d38e4b'
 DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
 
-
 df = pd.read_csv(
     '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
-names = list(df['Artist Name'].unique())
+artist_names = list(df['Artist Name'].unique())
 
 with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
          schedule_interval=None,
          description="ETL project with airflow tool",
          catchup=False, tags=['artists', 'last.fm', 'discogs.com']) as dag:
-
-    @task
-    def start():
-        print('Start Workflow...!')
     
-    @task()
+    @task
     def extract_info_from_artist(name: str):
         # extract for all artists' informations from last fm and store as a dict
         artist_contents = {}
@@ -36,46 +31,77 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
 
         return artist_contents
 
-    @task()
+    @task
     def extract_titles_from_artist(name: str):
         # get the artist id from artist name
-        url = 'https://api.discogs.com/database/search?q=' + str(name) + (
-            '&{?type=artist}&token=') + DISCOGS_API_KEY
+        url = ('https://api.discogs.com/database/search?q=') + name + ('&{?type=artist}&token=') + DISCOGS_API_KEY
         discogs_artist_info = requests.get(url).json()
         id = discogs_artist_info['results'][0]['id']
-
-        print('Search releases from discogs.com for artist {} ...'.format(str(name)))
-
         # with id get artist's releases
         url = ('https://api.discogs.com/artists/') + str(id) + ('/releases')
         releases = requests.get(url).json()
-        
-        # store the releases/tracks info in a list of dictionaries
+
+        print('Found releases from discogs.com for artist ' + str(name) + ' with Discogs ID: ' + str(id))
+  
+        return {name: releases['releases']}
+
+    @task
+    def extract_info_for_titles(releases: dict):
+        # store the releases/tracks info in a list
         releases_info = []
-        for index in range(len(releases['releases'])):
-            url = releases['releases'][index]['resource_url']
+
+        key = list(releases.keys())
+        artist = str(key[0])
+        for index in range(len(releases[artist])):
+            url = releases[artist][index]['resource_url']
             source = requests.get(url).json()
             # search if exists track's price
             if 'lowest_price' in source.keys():  
                 if 'formats' in source.keys():
                     releases_info.append({'Title': source['title'],
-                                      'Collaborations': releases['releases'][index]['artist'],
-                                      'Year': source['year'],
-                                      'Format': source['formats'][0]['name'],
-                                      'Discogs Price': source['lowest_price']})
+                                        'Collaborations': releases[artist][index]['artist'],
+                                        'Year': source['year'],
+                                        'Format': source['formats'][0]['name'],
+                                        'Discogs Price': source['lowest_price']})
                 else:
                     releases_info.append({'Title': source['title'],
-                                      'Collaborations': releases['releases'][index]['artist'],
-                                      'Year': source['year'],
-                                      'Format': None,
-                                      'Discogs Price': source['lowest_price']})
-                print('Found ' + str((index + 1)) + ' titles!')
-            # sleep 5 secs to don't miss requests
+                                        'Collaborations': releases[artist][index]['artist'],
+                                        'Year': source['year'],
+                                        'Format': None,
+                                        'Discogs Price': source['lowest_price']})
+            print('Found informations from discogs.com for {} titles'.format(str((index + 1))))
+            # sleep 3 secs to don't miss requests
             time.sleep(5)
 
-        print('Found releases from artist ' + str(name) + ' with Discogs ID: ' + str(id))
+        # return artist's tracks for transform stage
         return releases_info
-    
+
+    @task
+    def extract_listeners_from_titles_by_artist(releases: dict):
+        # initialize list for listeners for each title
+        listeners = []
+        # find listeners from lastfm for each release title
+        key = list(releases.keys())
+        artist = str(key[0])
+        print('Search listeners for each release title for artist {}'.format(artist))
+        for index in range(len(releases[artist])):
+            title = releases[artist][index]['title']
+            url = 'https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=' + LASTFM_API_KEY + '&artist=' + artist + '&track='+ title + '&format=json'
+
+            try:
+                source = requests.get(url).json()
+                if 'track' in source.keys():
+                    listeners.append({'Title': source['track']['name'],
+                                    'Last.fm Listeners': source['track']['listeners']})
+                    print('Found listeners from last.fm for title {}'.format(title))
+                else:
+                    print('Not found listeners from last.fm for title {}'.format(title))
+            except:
+                print('Not found listeners from last.fm for title {}'.format(title))
+                continue
+  
+        return listeners
+
     @task
     def clean_the_artist_content(content: dict):
         content_df = pd.DataFrame(content.values(), columns=['Content'], index=content.keys())
@@ -92,26 +118,32 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     @task
     def remove_wrong_values(releases: dict):
         df = pd.DataFrame(releases)
-        
         # find and remove the rows/titles where there are no selling prices in discogs.com
         df = df[df['Discogs Price'].notna()]
         print('Remove releases where there no selling price in discogs.com')
         # keep only the rows has positive value of year
         df = df[df['Year'] > 0]
-        print('Remove releases where there no selling price in discogs.com')
+        print('Remove releases where have wrong year value in discogs.com')
 
-        return df.to_dict()
-
+        return df.to_dict(orient = 'records')
+    
+    @task
+    def merge_titles_data(releases: dict, listeners: dict):
+        releases_df = pd.DataFrame(releases)
+        listeners_df = pd.DataFrame(listeners)
+        df = pd.merge(releases_df, listeners_df, on='Title')
+        print('Merge releases and listeners data')
+        
+        return df.to_dict(orient = 'records')
+    
     @task
     def drop_duplicates_titles(releases: dict):
         df = pd.DataFrame(releases)
         df = df.drop_duplicates(subset=['Title'])
         print('Find and remove the duplicates titles if exist!')
-        df = pd.DataFrame(data={'Collaborations': df['Collaborations'].values, 'Year': df['Year'].values,
-                                'Format': df['Format'].values,
-                                'Discogs Price': df['Discogs Price'].values}, index=(df['Title'].values))
-
-        return df.to_dict(orient='index')
+        df =  df.set_index('Title')
+        
+        return df.to_dict(orient = 'index')
         
     @task
     def integrate_data(content: dict, releases: dict) -> None:
@@ -138,10 +170,12 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         return content
     
     @task_group(group_id = 'extract_transform_stage')
-    def transform(names: list):
-        for name in names:
-            integrate_data(clean_the_artist_content(extract_info_from_artist(name)), drop_duplicates_titles(remove_wrong_values(extract_titles_from_artist(name))))      
-          
+    def transform(artist_names: list):
+        for name in artist_names:
+            releases = extract_titles_from_artist(name)
+            integrate_data(clean_the_artist_content(extract_info_from_artist(name)),
+                           drop_duplicates_titles(merge_titles_data(remove_wrong_values(extract_info_for_titles(releases)),
+                                                                                        extract_listeners_from_titles_by_artist(releases))))
     @task
     def load_to_database():
         client = pymongo.MongoClient("mongodb+srv://user:AotD8lF0WspDIA4i@cluster0.qtikgbg.mongodb.net/?retryWrites=true&w=majority")
@@ -162,4 +196,4 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     def load():
         load_to_database()
     
-    start() >> transform(names[:2]) >> load()
+    transform(artist_names[:2]) >> load()
