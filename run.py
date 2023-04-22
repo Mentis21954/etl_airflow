@@ -70,20 +70,19 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                                         'Format': None,
                                         'Discogs Price': source['lowest_price']})
             print('Found informations from discogs.com for {} titles'.format(str((index + 1))))
-            # sleep 3 secs to don't miss requests
+            # sleep 5 secs to don't miss requests
             time.sleep(5)
 
         # return artist's tracks for transform stage
         return releases_info
 
     @task
-    def extract_listeners_from_titles_by_artist(releases: dict):
-        # initialize list for listeners for each title
-        listeners = []
+    def extract_playcounts_from_titles_by_artist(releases: dict):
+        # initialize list for playcounts for each title
+        playcounts = []
         # find listeners from lastfm for each release title
         key = list(releases.keys())
         artist = str(key[0])
-        print('Search listeners for each release title for artist {}'.format(artist))
         for index in range(len(releases[artist])):
             title = releases[artist][index]['title']
             url = 'https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=' + LASTFM_API_KEY + '&artist=' + artist + '&track='+ title + '&format=json'
@@ -91,16 +90,16 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
             try:
                 source = requests.get(url).json()
                 if 'track' in source.keys():
-                    listeners.append({'Title': source['track']['name'],
-                                    'Last.fm Listeners': source['track']['listeners']})
-                    print('Found listeners from last.fm for title {}'.format(title))
+                    playcounts.append({'Title': source['track']['name'],
+                                    'Lastfm Playcount': source['track']['playcount']})
+                    print('Found playcount from last.fm for title {}'.format(title))
                 else:
-                    print('Not found listeners from last.fm for title {}'.format(title))
+                    print('Not found playcount from last.fm for title {}'.format(title))
             except:
-                print('Not found listeners from last.fm for title {}'.format(title))
+                print('Not found playcount from last.fm for title {}'.format(title))
                 continue
   
-        return listeners
+        return playcounts
 
     @task
     def clean_the_artist_content(content: dict):
@@ -128,11 +127,12 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         return df.to_dict(orient = 'records')
     
     @task
-    def merge_titles_data(releases: dict, listeners: dict):
+    def merge_titles_data(releases: dict, playcounts: dict):
         releases_df = pd.DataFrame(releases)
-        listeners_df = pd.DataFrame(listeners)
-        df = pd.merge(releases_df, listeners_df, on='Title')
-        print('Merge releases and listeners data')
+        playcounts_df = pd.DataFrame(playcounts)
+        
+        df = pd.merge(releases_df, playcounts_df, on='Title')
+        print('Merge releases and playcounts data')
         
         return df.to_dict(orient = 'records')
     
@@ -175,7 +175,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
             releases = extract_titles_from_artist(name)
             integrate_data(clean_the_artist_content(extract_info_from_artist(name)),
                            drop_duplicates_titles(merge_titles_data(remove_wrong_values(extract_info_for_titles(releases)),
-                                                                                        extract_listeners_from_titles_by_artist(releases))))
+                                                                                        extract_playcounts_from_titles_by_artist(releases))))
     @task
     def load_to_database():
         client = pymongo.MongoClient("mongodb+srv://user:AotD8lF0WspDIA4i@cluster0.qtikgbg.mongodb.net/?retryWrites=true&w=majority")
