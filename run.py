@@ -70,9 +70,9 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                                           'Year': source['year'],
                                           'Format': None,
                                           'Discogs Price': source['lowest_price']})
-            print('Found informations from discogs.com for {} titles'.format(str((index + 1))))
-            # sleep 5 secs to don't miss requests
-            time.sleep(5)
+                print('Found informations from discogs.com for title {}'.format(source['title']))
+                # sleep 5 secs to don't miss requests
+                time.sleep(5)
 
         # return artist's tracks for transform stage
         return releases_info
