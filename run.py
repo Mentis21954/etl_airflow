@@ -1,7 +1,7 @@
 import pandas as pd
+import requests
 import time
 import json
-import requests
 import pendulum
 from airflow import DAG
 from airflow.decorators import task, task_group
@@ -22,8 +22,7 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     def extract_info_from_artist(name: str):
         # extract for all artists' informations from last fm and store as a dict
         artist_contents = {}
-        url = ('https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=') + str(name) + (
-            '&api_key=') + str(LASTFM_API_KEY) + ('&format=json')
+        url = 'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=' + name + '&api_key=' + LASTFM_API_KEY + '&format=json'
         artist_info = requests.get(url).json()
         artist_contents.update({str(name): artist_info['artist']['bio']['content']})
         print('Search information for artist {} ...'.format(str(name)))
@@ -34,11 +33,13 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     @task
     def extract_titles_from_artist(name: str):
         # get the artist id from artist name
-        url = ('https://api.discogs.com/database/search?q=') + name + ('&{?type=artist}&token=') + DISCOGS_API_KEY
+        url = 'https://api.discogs.com/database/search?q=' + name + '&{?type=artist}&token=' + DISCOGS_API_KEY
         discogs_artist_info = requests.get(url).json()
         id = discogs_artist_info['results'][0]['id']
+
         # with id get artist's releases
-        url = ('https://api.discogs.com/artists/') + str(id) + ('/releases')
+        url = 'https://api.discogs.com/artists/' + str(id) + '/releases?token=' + DISCOGS_API_KEY
+
         releases = requests.get(url).json()
 
         print('Found releases from discogs.com for artist ' + str(name) + ' with Discogs ID: ' + str(id))
@@ -55,7 +56,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         artist = str(key[0])
         for index in range(len(releases[artist])):
             url = releases[artist][index]['resource_url']
-            source = requests.get(url).json()
+            params = {'token': DISCOGS_API_KEY}
+            source = requests.get(url, params=params).json()
             # search if exists track's price
             if 'lowest_price' in source.keys():
                 if 'formats' in source.keys():
@@ -71,8 +73,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
                                           'Format': None,
                                           'Discogs Price': source['lowest_price']})
                 print('Found informations from discogs.com for title {}'.format(source['title']))
-                # sleep 5 secs to don't miss requests
-                time.sleep(5)
+                # sleep 4 secs to don't miss requests
+                time.sleep(4)
 
         # return artist's tracks for transform stage
         return releases_info
@@ -210,4 +212,4 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         load_to_database()
 
 
-    transform(artist_names[:2]) >> load()
+    transform(artist_names[:4]) >> load()
