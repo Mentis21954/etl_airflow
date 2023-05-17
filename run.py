@@ -145,6 +145,16 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
 
 
     @task
+    def sort_titles_by_price(releases: dict):
+        df = pd.DataFrame(releases)
+        # sort descending
+        df = df.sort_values(['Discogs Price', 'Title'], ascending=False)
+        print('Sort titles by highest value')
+
+        return df.to_dict(orient='records')
+
+
+    @task
     def drop_duplicates_titles(releases: dict):
         df = pd.DataFrame(releases)
         df = df.drop_duplicates(subset=['Title'])
@@ -184,9 +194,9 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         for name in artist_names:
             releases = extract_titles_from_artist(name)
             integrate_data(clean_the_artist_content(extract_info_from_artist(name)),
-                           drop_duplicates_titles(
+                           drop_duplicates_titles(sort_titles_by_price(
                                merge_titles_data(remove_wrong_values(extract_info_for_titles(releases)),
-                                                 extract_playcounts_from_titles_by_artist(releases))))
+                                                 extract_playcounts_from_titles_by_artist(releases)))))
 
 
     @task
