@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 import time
 import json
-import pendulum
+import datetime as dt
 from airflow import DAG
 from airflow.decorators import task, task_group
 import pymongo
@@ -14,7 +14,7 @@ df = pd.read_csv(
     '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
 artist_names = list(df['Artist Name'].unique())
 
-with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
+with DAG(dag_id='ETL', start_date=dt.datetime(2022, 1, 1),
          schedule_interval=None,
          description="ETL project with airflow tool",
          catchup=False, tags=['artists', 'last.fm', 'discogs.com']) as dag:
@@ -89,7 +89,8 @@ with DAG(dag_id='ETL', start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
         artist = str(key[0])
         for index in range(len(releases[artist])):
             title = releases[artist][index]['title']
-            url = 'https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=' + LASTFM_API_KEY + '&artist=' + artist + '&track=' + title + '&format=json'
+            url = 'https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=' + LASTFM_API_KEY + '&artist=' + \
+                  artist + '&track=' + title + '&format=json'
 
             try:
                 source = requests.get(url).json()
