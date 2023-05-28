@@ -10,10 +10,6 @@ import pymongo
 LASTFM_API_KEY = '3f8f9f826bc4b0c8b529828839d38e4b'
 DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
 
-df = pd.read_csv(
-    '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
-artist_names = list(df['Artist Name'].unique())
-
 with DAG(dag_id='ETL', start_date=dt.datetime(2022, 1, 1),
          schedule_interval=None,
          description="ETL project with airflow tool",
@@ -222,5 +218,9 @@ with DAG(dag_id='ETL', start_date=dt.datetime(2022, 1, 1),
     def load():
         load_to_database()
 
+
+    df = pd.read_csv(
+        '/home/mentis/airflow/dags/etl_airflow/spotify_artist_data.csv')
+    artist_names = list(df['Artist Name'].unique())
 
     transform(artist_names[:4]) >> load()
