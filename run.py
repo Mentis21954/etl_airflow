@@ -13,7 +13,7 @@ DISCOGS_API_KEY = 'hhNKFVCSbBWJATBYMyIxxjCJDSuDZMBGnCapdhOy'
 with DAG(dag_id='ETL', start_date=dt.datetime(2022, 1, 1),
          schedule_interval=None,
          description="ETL project with airflow tool",
-         catchup=False, tags=['artists', 'last.fm', 'discogs.com']) as dag:
+         tags=['artists', 'last.fm', 'discogs.com']) as dag:
     @task
     def extract_info_from_artist(name: str):
         # extract for all artists' informations from last fm and store as a dict
